@@ -140,14 +140,14 @@ export interface Transform {
   enabled_at: number | null;
   updated_at: number;
   metadata_id: string | null;
-  aggregations: Map<String, any>;
+  aggregations: Map<string, any>;
   page_size: number;
   schedule: IntervalSchedule | CronSchedule;
   schema_version: number;
   source_index: string;
   target_index: string;
   roles: String[];
-  data_selection_query: Map<String, any>;
+  data_selection_query: Map<string, any>;
 }
 
 export interface TransformMetadata {

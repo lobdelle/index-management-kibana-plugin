@@ -16,13 +16,14 @@
 import React, { ChangeEvent, Component } from "react";
 import { EuiButton, EuiButtonEmpty, EuiComboBoxOptionOption, EuiFlexGroup, EuiFlexItem } from "@elastic/eui";
 import { RouteComponentProps } from "react-router-dom";
-import { RollupService, TransformService } from "../../../../services";
+import moment from "moment";
+import { TransformService } from "../../../../services";
 import { BREADCRUMBS, ROUTES } from "../../../../utils/constants";
 import IndexService from "../../../../services/IndexService";
 import { ManagedCatIndex } from "../../../../../server/models/interfaces";
 import CreateTransform from "../CreateTransform";
 import CreateTransformStep2 from "../CreateTransformStep2";
-import { DimensionItem, FieldItem, IndexItem, MetricItem, Transform } from "../../../../../models/interfaces";
+import { DimensionItem, FieldItem, IndexItem, Transform } from "../../../../../models/interfaces";
 import { getErrorMessage } from "../../../../utils/helpers";
 import { EMPTY_TRANSFORM } from "../../utils/constants";
 import CreateTransformStep3 from "../CreateTransformStep3";
@@ -31,7 +32,6 @@ import { compareFieldItem, parseFieldOptions } from "../../utils/helpers";
 import { CoreServicesContext } from "../../../../components/core_services";
 
 interface CreateTransformFormProps extends RouteComponentProps {
-  rollupService: RollupService;
   transformService: TransformService;
   indexService: IndexService;
 }
@@ -61,7 +61,7 @@ interface CreateTransformFormState {
   selectedTerms: FieldItem[];
 
   selectedGroupField: DimensionItem[];
-  selectedAggregations: MetricItem[]; // Needs to be Map<String, any>
+  selectedAggregations: Map<string, any>; // Needs to be Map<string, any>
   aggregationsError: string;
   selectedFields: FieldItem[];
   jobEnabledByDefault: boolean;
@@ -98,7 +98,7 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
       selectedFields: [],
       selectedTerms: [],
       selectedGroupField: [],
-      selectedAggregations: [],
+      selectedAggregations: new Map(),
       aggregationsError: "",
       description: "",
 
@@ -126,8 +126,8 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
   getMappings = async (srcIndex: string): Promise<void> => {
     if (!srcIndex.length) return;
     try {
-      const { rollupService } = this.props;
-      const response = await rollupService.getMappings(srcIndex);
+      const { transformService } = this.props;
+      const response = await transformService.getMappings(srcIndex);
       if (response.ok) {
         let allMappings: FieldItem[][] = [];
         const mappings = response.response;
@@ -169,29 +169,11 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
       }
     } else if (currentStep == 2) {
       const { selectedAggregations } = this.state;
-      if (selectedAggregations.length != 0) {
+      if (selectedAggregations.size != 0) {
         //Check if there's any aggregation item with no method selected.
         //TODO: Could Probably store all invalid fields in an array and highlight them in table.
-        let invalidAggregation = false;
-        selectedAggregations.map((aggregation) => {
-          if (
-            !(
-              aggregation.min ||
-              aggregation.max ||
-              aggregation.sum ||
-              aggregation.avg ||
-              aggregation.value_count ||
-              aggregation.percentiles
-            )
-          ) {
-            const errorMsg = "Must specify at least one aggregation for: " + aggregation.source_field.label;
-            this.setState({ submitError: errorMsg, aggregationsError: errorMsg });
-            invalidAggregation = true;
-            error = true;
-          }
-        });
-        //If nothing invalid found, clear error.
-        if (!invalidAggregation) this.setState({ aggregationsError: "" });
+        // TODO: Validate aggregations
+
       }
     } else if (currentStep == 3) {
       //Check if interval is a valid value and is specified.
@@ -247,7 +229,7 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
     this.setState({ sourceIndex: options, transformJSON: newJSON, sourceIndexError: sourceIndexError });
     this.setState({
       selectedGroupField: [],
-      selectedAggregations: [],
+      selectedAggregations: new Map(),
     });
     await this.getMappings(srcIndexText);
   };
@@ -269,7 +251,8 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
     this.setState({ selectedGroupField: selectedFields });
   };
 
-  onAggregationSelectionChange = (selectedFields: MetricItem[]): void => {
+  onAggregationSelectionChange = (selectedFields: Map<string, any>): void => {
+    console.log("Agg change: " + selectedFields);
     this.setState({ selectedAggregations: selectedFields });
   };
 
@@ -319,7 +302,7 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
     let newJSON = transformJSON;
 
     // Clear the groups fields
-    newJSON.transform.groups = {};
+    newJSON.transform.groups = [];
 
     // Push rest of groups
     selectedGroupField.map((group) => {
@@ -346,6 +329,17 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
         });
       }
     });
+
+    // Testing Group Structure, uncomment to use group hardcoded for kibana_sample_data_ecommerce
+    /**
+    newJSON.transform.groups.push({
+      histogram : {
+        source_field: "total_unique_products",
+        interval: "1"
+      }
+    })
+    */
+
     this.setState({ transformJSON: newJSON });
   };
 
@@ -353,23 +347,23 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
     const { transformJSON, selectedAggregations } = this.state;
     let newJSON = transformJSON;
 
-    //Clear the aggregations array before pushing
-    newJSON.transform.aggregations = [];
+    newJSON.transform.aggregations = {};
 
     //Push all aggregations
-    selectedAggregations.map((aggregation) => {
-      const aggregations = [];
-      if (aggregation.min) aggregations.push({ min: {} });
-      if (aggregation.max) aggregations.push({ max: {} });
-      if (aggregation.sum) aggregations.push({ sum: {} });
-      if (aggregation.avg) aggregations.push({ avg: {} });
-      if (aggregation.value_count) aggregations.push({ value_count: {} });
-      if (aggregation.percentiles) aggregations.push({ percentiles: {} });
-      newJSON.transform.aggregations.push({
-        source_field: aggregation.source_field.label,
-        aggregations: aggregations,
-      });
+    selectedAggregations.forEach((aggregation, target_field) => {
+      // This assumes the aggregation comes formatted already, may need to do more work here
+      newJSON.transform.aggregations[target_field] = Object.fromEntries(aggregation);
     });
+
+    // Testing aggregation formatting, uncomment to use aggregation hardcoded for kibana_sample_data_ecommerce
+    /**
+    newJSON.transform.aggregations["taxful_total_price"] = {
+      sum : {
+        field : "total_price"
+      }
+    }
+    */
+
     this.setState({ transformJSON: newJSON });
   };
 
@@ -383,6 +377,7 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
         this.updateGroup();
         this.updateAggregation();
         this.updateSchedule();
+        console.log(transformJSON);
         await this.onCreate(transformId, transformJSON);
       }
     } catch (err) {
@@ -461,7 +456,7 @@ export default class CreateTransformForm extends Component<CreateTransformFormPr
           onChangeSourceIndex={this.onChangeSourceIndex}
           onChangeTargetIndex={this.onChangeTargetIndex}
           currentStep={this.state.currentStep}
-          hasAggregation={selectedGroupField.length != 0 || selectedAggregations.length != 0}
+          hasAggregation={selectedGroupField.length != 0 || selectedAggregations.size != 0}
         />
         <CreateTransformStep2
           {...this.props}

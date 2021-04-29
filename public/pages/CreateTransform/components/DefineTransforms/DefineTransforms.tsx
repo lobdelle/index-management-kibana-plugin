@@ -27,12 +27,12 @@ interface DefineTransformsState {}
 export default class DefineTransforms extends Component<DefineTransformsProps, DefineTransformsState> {
   constructor(props: DefineTransformsProps) {
     super(props);
-    const { transfromId } = this.props;
+    const { transformId } = this.props;
     this.state = {};
   }
 
   render() {
-    const { transfromId, sourceIndex } = this.props;
+    const { transformId, sourceIndex } = this.props;
     return (
       <ContentPanel
         actions={
